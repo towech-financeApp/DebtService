@@ -5,8 +5,10 @@
  * Contains functions that validate data
  */
 // Databse
-// import DbCategories from '../database/dbCategories';
-// import categoryCollection from '../database/dbCategories';
+import DbDebts from "../databse/dbDebts";
+
+// Models
+import { Objects } from "../Models";
 
 export default class Validator {
   /** validateAmount
@@ -53,7 +55,37 @@ export default class Validator {
     return {
       errors,
       valid: Object.keys(errors).length < 1,
-      trimmed: concept.trim()
+      trimmed: concept.trim(),
+    };
+  };
+
+  /** validateDebtOwnership
+   *  Checks if the user is the owner of a debt
+   *
+   * @param {string} userId
+   * @param {string} debtId
+   *
+   * @returns Valid: Boolean that confirms validity
+   * @returns errors: Object with all the errors
+   * @returns debt: Object that describes the debt
+   */
+  static validateDebtOwnership = async (
+    userId: string,
+    debtId: string,
+  ): Promise<{ valid: boolean; errors: any; debt: Objects.Debt }> => {
+    // Creates an object that will hold all the errors
+    const errors: any = {};
+
+    const debt = await DbDebts.getById(debtId);
+
+    if (!userId || !debt || debt.user_id !== userId) {
+      errors.wallet = 'User does not own this debt';
+    }
+
+    return {
+      errors,
+      valid: Object.keys(errors).length < 1,
+      debt,
     };
   };
 

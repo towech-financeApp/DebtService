@@ -12,9 +12,16 @@ import DbDebts from './databse/dbDebts';
 
 // Models
 import { Objects, Requests } from './Models';
+
+// utils
 import Validator from './utils/validator';
+import RabbitRequest from './utils/rabbitRequest';
 
 export default class MessageProcessor {
+  private static otherCategoryId_In = process.env.OTHER_CATEGORYID || '';
+  private static otherCategoryId_Out = process.env.OTHER_CATEGORYID_OUT || '';
+  private static transactionQueue = process.env.TRANSACTION_QUEUE || 'transactionQueue';
+
   static process = async (message: AmqpMessage): Promise<AmqpMessage> => {
     // Destructures the message
     const { type, payload } = message;
@@ -23,6 +30,8 @@ export default class MessageProcessor {
     switch (type) {
       case 'add':
         return await MessageProcessor.addDebt(payload);
+      case 'debt-payment':
+        return await MessageProcessor.payDebt(payload);
       default:
         logger.debug(`Unsupported function type: ${type}`);
         return AmqpMessage.errorMessage(`Unsupported function type: ${type}`);
@@ -35,11 +44,11 @@ export default class MessageProcessor {
    * Adds a debt to the database
    * @param {Requests.WorkerCreateDebt} message
    *
-   * @returns An empty response
+   * @returns The newly created debt
    */
   private static addDebt = async (message: Requests.WorkerCreateDebt): Promise<AmqpMessage<Objects.Debt>> => {
     logger.http(`Adding debt for user: ${message.user_id}`);
-    
+
     try {
       let errors = {};
 
@@ -72,6 +81,64 @@ export default class MessageProcessor {
       } as Objects.Debt);
 
       return new AmqpMessage(newDebt, 'add', 200);
+    } catch (e) {
+      return AmqpMessage.errorMessage(`Unexpected error`, 500, e);
+    }
+  };
+
+  /** payDebt
+   * Adss a payment to the requested debt
+   *
+   * @param {Requests.WorkerPayDebt} message
+   *
+   * @returns The modified debt
+   */
+  private static payDebt = async (message: Requests.WorkerPayDebt): Promise<AmqpMessage<Objects.Debt>> => {
+    logger.http(`Making payment for debt: ${message.debt_id}`);
+
+    try {
+      let errors = {};
+
+      // Validates that the user is the owner of the debt
+      const validDebt = await Validator.validateDebtOwnership(message.user_id, message.debt_id);
+      if (!validDebt.valid) return AmqpMessage.errorMessage('Authentication Error', 403, validDebt.errors);
+
+      // validates the amount
+      const amountValidation = Validator.validateAmount(message.amount.toString());
+      if (!amountValidation.valid) errors = { ...errors, ...amountValidation.errors };
+
+      // Gets the total amount that has already been paid
+      const totalPaid = validDebt.debt.payments.reduce((a, b) => {
+        return a + b.amount;
+      }, 0);
+
+      // If the amount being paid is bigger than the missing amount, it creates a transaction only for what's missing
+      // TODO: Store remainder as bonus
+      let newCredited = amountValidation.rounded;
+      // let bonus = 0;
+      if (totalPaid + amountValidation.rounded > validDebt.debt.amount) {
+        newCredited = validDebt.debt.amount - totalPaid;
+        // bonus = amountValidation.rounded - newCredited;
+      }
+
+      // Creates the conecept
+      const concept = `${validDebt.debt.concept} p${validDebt.debt.payments.length + 1}: ${(
+        (newCredited + totalPaid) /
+        100
+      ).toFixed(2)}/${(validDebt.debt.amount / 100).toFixed(2)}`;
+
+      logger.debug(concept);
+
+      // Sends an error response if there is any error
+      if (Object.keys(errors).length > 0) return AmqpMessage.errorMessage('Invalid Fields', 422, errors);
+
+      // TODO: Send transaction
+      const transaction = await RabbitRequest.sendWithResponse(MessageProcessor.transactionQueue, 'testerino', {});
+      logger.debug(JSON.stringify(transaction))
+
+      // TODO: Add to debt
+
+      return new AmqpMessage(validDebt.debt as Objects.Debt, 'add', 200);
     } catch (e) {
       return AmqpMessage.errorMessage(`Unexpected error`, 500, e);
     }

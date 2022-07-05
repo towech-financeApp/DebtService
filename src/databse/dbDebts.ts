@@ -20,7 +20,21 @@ const DebtSchema = new mongoose.Schema({
   createdAt: Date,
 });
 
+const TransactionSchema = new mongoose.Schema({
+  user_id: String,
+  wallet_id: String,
+  transfer_id: String,
+  category: { type: mongoose.Schema.Types.ObjectId, ref: 'Categories' },
+  concept: String,
+  amount: Number,
+  excludeFromReport: { type: Boolean, default: undefined },
+  transactionDate: Date,
+  createdAt: Date,
+});
+
 const debtCollection = mongoose.model<Objects.Debt>('Debts', DebtSchema);
+mongoose.model<Objects.Transaction>('Transactions', TransactionSchema);
+
 
 // Functions to communicate with the collection ID
 export default class DbDebts {
@@ -96,17 +110,17 @@ export default class DbDebts {
   //   await transactionCollection.deleteMany({ user_id: userId });
   // };
 
-  // /** getById
-  //  * Gets the transaction from a given id
-  //  *
-  //  * @param {string} transId
-  //  *
-  //  * @returns The transaction from the DB with the userId attached
-  //  */
-  // static getById = async (transId: string): Promise<Objects.Transaction> => {
-  //   const response = await transactionCollection.findOne({ _id: transId }).populate('category');
-  //   return response as Objects.Transaction;
-  // };
+  /** getById
+   * Gets the debt from a given id
+   *
+   * @param {string} debtId
+   *
+   * @returns The debt from the DB with the userId attached
+   */
+  static getById = async (debtId: string): Promise<Objects.Debt> => {
+    const response = await debtCollection.findOne({ _id: debtId }).populate('payments');
+    return response as Objects.Debt;
+  };
 
   // /** getAll
   //  * Gets all the transactions of a wallet
