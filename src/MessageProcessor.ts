@@ -11,7 +11,7 @@ import logger from 'tow96-logger';
 import DbDebts from './databse/dbDebts';
 
 // Models
-import { Objects } from './Models';
+import { Objects, Requests } from './Models';
 import Validator from './utils/validator';
 
 export default class MessageProcessor {
@@ -33,11 +33,11 @@ export default class MessageProcessor {
 
   /** addDebt
    * Adds a debt to the database
-   * @param {any} message
+   * @param {Requests.WorkerCreateDebt} message
    *
    * @returns An empty response
    */
-  private static addDebt = async (message: any): Promise<AmqpMessage<Objects.Debt>> => {
+  private static addDebt = async (message: Requests.WorkerCreateDebt): Promise<AmqpMessage<Objects.Debt>> => {
     logger.http(`Adding debt for user: ${message.user_id}`);
     
     try {
@@ -56,7 +56,7 @@ export default class MessageProcessor {
       if (!conceptValid.valid) errors = { ...errors, ...amountValidation.errors };
 
       // Validates the date
-      const dateValid = Validator.validateDate(message.date);
+      const dateValid = Validator.validateDate(message.date.toString());
       if (!dateValid.valid) errors = { ...errors, ...amountValidation.errors };
 
       // Sends an error response if there is any error
